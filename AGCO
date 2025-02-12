@@ -1,228 +1,28 @@
 import boto3
-import pandas as pd
 
-# Initialize S3 client
-s3 = boto3.client('s3')
+def list_folders(bucket_name, prefix=''):
+    """
+    List all folders in a specified S3 bucket location.
 
-# Variables
-bucket_name = 'your-bucket-name'
-csv_file_path = 'path/to/your/csv_file.csv'  # Local or S3 path to CSV
-target_folder = 'target/folder/path/'        # e.g., 'destination-folder/'
-
-# Read the CSV file (assuming it has a column named 'folder_name')
-df = pd.read_csv(csv_file_path)
-folder_names = df['folder_name'].tolist()
-
-# Move files from each folder to the target folder
-for folder in folder_names:
-    source_prefix = folder if folder.endswith('/') else folder + '/'
+    :param bucket_name: Name of the S3 bucket
+    :param prefix: S3 prefix if you're targeting a specific folder (default is root)
+    :return: List of folder names
+    """
+    s3 = boto3.client('s3')
     
-    # List all objects under the source prefix
-    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=source_prefix)
-    
-    if 'Contents' in response:
-        for obj in response['Contents']:
-            source_key = obj['Key']
-            file_name = source_key.split('/')[-1]  # Extract filename
-            target_key = f"{target_folder}{file_name}"
-
-            # Copy the object to the target location
-            s3.copy_object(Bucket=bucket_name, CopySource={'Bucket': bucket_name, 'Key': source_key}, Key=target_key)
-            print(f"Copied {source_key} to {target_key}")
-
-            # Delete the original object
-            s3.delete_object(Bucket=bucket_name, Key=source_key)
-            print(f"Deleted {source_key}")
-    else:
-        print(f"No files found in folder: {source_prefix}")
-
-print("File transfer complete.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-himport boto3
-import pandas as pd
-import os
-import concurrent.futures
-
-# AWS S3 Client
-s3 = boto3.client('s3')
-
-# Source and Destination S3 Buckets
-source_bucket = 'agco-servicepublications-agentforce-dev'
-destination_bucket = 'agco-servicepublications-agentforce-dev'
-
-# Hardcoded Destination Folder Mapping for WSM
-destination_folders_wsm = {
-    "FT 100": "AWS S3 Service Pubs WSM en_GB FT 100",
-    "FT 200": "AWS S3 Service Pubs WSM en_GB FT 200",
-    "FT 400": "AWS S3 Service Pubs WSM en_GB FT 400",
-    "FT 500": "AWS S3 Service Pubs WSM en_GB FT 500",
-    "MF 100": "AWS S3 Service Pubs WSM en_GB MF 100",
-    "MF 200": "AWS S3 Service Pubs WSM en_GB MF 200",
-    "MF 400": "AWS S3 Service Pubs WSM en_GB MF 400",
-    "MF 500": "AWS S3 Service Pubs WSM en_GB MF 500",
-    "CH 100": "AWS S3 Service Pubs WSM en_GB CH 100",
-    "CH 200": "AWS S3 Service Pubs WSM en_GB CH 200",
-    "CH 400": "AWS S3 Service Pubs WSM en_GB CH 400",
-    "CH 500": "AWS S3 Service Pubs WSM en_GB CH 500",
-    "VT 100": "AWS S3 Service Pubs WSM en_GB VT 100",
-    "VT 200": "AWS S3 Service Pubs WSM en_GB VT 200",
-    "VT 400": "AWS S3 Service Pubs WSM en_GB VT 400",
-    "VT 500": "AWS S3 Service Pubs WSM en_GB VT 500",
-    "Other": "AWS S3 Service Pubs WSM en_GB Other",
-}
-
-# Hardcoded Destination Folder Mapping for OM (Matching WSM Folder Names)
-destination_folders_om = {
-    "FT 100": "AWS S3 Service Pubs OM en_GB FT 100",
-    "FT 200": "AWS S3 Service Pubs OM en_GB FT 200",
-    "FT 400": "AWS S3 Service Pubs OM en_GB FT 400",
-    "FT 500": "AWS S3 Service Pubs OM en_GB FT 500",
-    "MF 100": "AWS S3 Service Pubs OM en_GB MF 100",
-    "MF 200": "AWS S3 Service Pubs OM en_GB MF 200",
-    "MF 400": "AWS S3 Service Pubs OM en_GB MF 400",
-    "MF 500": "AWS S3 Service Pubs OM en_GB MF 500",
-    "CH 100": "AWS S3 Service Pubs OM en_GB CH 100",
-    "CH 200": "AWS S3 Service Pubs OM en_GB CH 200",
-    "CH 400": "AWS S3 Service Pubs OM en_GB CH 400",
-    "CH 500": "AWS S3 Service Pubs OM en_GB CH 500",
-    "VT 100": "AWS S3 Service Pubs OM en_GB VT 100",
-    "VT 200": "AWS S3 Service Pubs OM en_GB VT 200",
-    "VT 400": "AWS S3 Service Pubs OM en_GB VT 400",
-    "VT 500": "AWS S3 Service Pubs OM en_GB VT 500",
-    "Other": "AWS S3 Service Pubs OM en_GB Other",
-}
-
-# Multipart Upload Threshold (100MB)
-MULTIPART_THRESHOLD = 100 * 1024 * 1024  # 100MB
-
-
-def get_destination_folders(brand_code, machine_type_code, destination_folders):
-    """Determine correct destination folder based on Brand Code & Machine Type Code."""
-    matching_folders = []
-
-    if brand_code and machine_type_code:
-        combined_code = f"{brand_code} {machine_type_code}"
-        if combined_code in destination_folders:
-            matching_folders.append(destination_folders[combined_code])
-
-    if not matching_folders:
-        matching_folders.append(destination_folders["Other"])
-
-    return matching_folders
-
-
-def copy_file(source_key, destination_key):
-    """Copies file to destination using either standard or multipart upload."""
-    try:
-        obj = s3.head_object(Bucket=source_bucket, Key=source_key)
-        file_size = obj['ContentLength']
-
-        if file_size > MULTIPART_THRESHOLD:
-            multipart_upload(source_key, destination_key)
-        else:
-            s3.copy_object(
-                Bucket=destination_bucket,
-                CopySource={'Bucket': source_bucket, 'Key': source_key},
-                Key=destination_key
-            )
-            print(f"Copied: {source_key} → {destination_key}")
-
-    except Exception as e:
-        print(f"Error copying {source_key} → {destination_key}: {e}")
-
-
-def process_file(part_number, brand_code, machine_type_code, destination_folders):
-    """Finds and copies files from S3."""
-    folders = get_destination_folders(brand_code, machine_type_code, destination_folders)
-
     paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=source_bucket, Prefix=f"{part_number}/")
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_key = {}
-
-        for page in page_iterator:
-            for obj in page.get('Contents', []):
-                source_key = obj['Key']
-                filename = os.path.basename(source_key)
-
-                for folder in folders:
-                    destination_key = f"{folder}/{filename}"
-                    future = executor.submit(copy_file, source_key, destination_key)
-                    future_to_key[future] = source_key
-
-        for future in concurrent.futures.as_completed(future_to_key):
-            future.result()
-
-
-metadata_files = {
-    "WSM": ("WSM.csv", destination_folders_wsm),
-    "OM": ("OM.csv", destination_folders_om)
-}
-
-for folder, (metadata_file, destination_folders) in metadata_files.items():
-    df = pd.read_csv(metadata_file, sep=',', quotechar='"')
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_tasks = {
-            executor.submit(process_file, row['Part Number'], row['BrandCode'], row['MachineTypeCode'], destination_folders): row['Part Number']
-            for _, row in df.iterrows()
-        }
-
-        for future in concurrent.futures.as_completed(future_tasks):
-            future.result()
-
-
-import boto3
-import pandas as pd
-
-# Initialize S3 client
-s3 = boto3.client('s3')
-
-def copy_files_based_on_csv(csv_file_path, source_bucket, source_prefix, target_bucket, target_prefix):
-    # Read the CSV to get folder mappings
-    folder_mapping = pd.read_csv(csv_file_path)
-
-    for index, row in folder_mapping.iterrows():
-        source_folder = row['source_folder']
-        target_folder = row['target_folder']
-
-        # List files in the source folder
-        response = s3.list_objects_v2(Bucket=source_bucket, Prefix=f"{source_prefix}{source_folder}")
-
-        if 'Contents' in response:
-            for obj in response['Contents']:
-                source_key = obj['Key']
-
-                # Construct the new target key
-                file_name = source_key.split('/')[-1]
-                target_key = f"{target_prefix}{target_folder}{file_name}"
-
-                # Copy the file
-                copy_source = {'Bucket': source_bucket, 'Key': source_key}
-                s3.copy(copy_source, target_bucket, target_key)
-                print(f"Copied {source_key} to {target_key}")
-        else:
-            print(f"No files found in {source_folder}")
+    folders = set()
+    
+    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix, Delimiter='/'):
+        if 'CommonPrefixes' in page:
+            for obj in page['CommonPrefixes']:
+                folders.add(obj['Prefix'])
+    
+    return list(folders)
 
 # Example usage
-csv_file_path = 'folders.csv'  # Local path to your CSV file
-source_bucket = 'source-bucket'
-source_prefix = 'source-folder/'
-target_bucket = 'target-bucket'
-target_prefix = 'target-folder/'
+bucket_name = 'your-bucket-name'
+prefix = 'your/folder/path/'  # Leave empty ('') to list from the root
+folders = list_folders(bucket_name, prefix)
 
-copy_files_based_on_csv(csv_file_path, source_bucket, source_prefix, target_bucket, target_prefix)
+print("Folders found:", folders)
