@@ -1,3 +1,56 @@
+import boto3
+import pandas as pd
+
+# Initialize S3 client
+s3 = boto3.client('s3')
+
+# Variables
+bucket_name = 'your-bucket-name'
+csv_file_path = 'path/to/your/csv_file.csv'  # Local or S3 path to CSV
+target_folder = 'target/folder/path/'        # e.g., 'destination-folder/'
+
+# Read the CSV file (assuming it has a column named 'folder_name')
+df = pd.read_csv(csv_file_path)
+folder_names = df['folder_name'].tolist()
+
+# Move files from each folder to the target folder
+for folder in folder_names:
+    source_prefix = folder if folder.endswith('/') else folder + '/'
+    
+    # List all objects under the source prefix
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=source_prefix)
+    
+    if 'Contents' in response:
+        for obj in response['Contents']:
+            source_key = obj['Key']
+            file_name = source_key.split('/')[-1]  # Extract filename
+            target_key = f"{target_folder}{file_name}"
+
+            # Copy the object to the target location
+            s3.copy_object(Bucket=bucket_name, CopySource={'Bucket': bucket_name, 'Key': source_key}, Key=target_key)
+            print(f"Copied {source_key} to {target_key}")
+
+            # Delete the original object
+            s3.delete_object(Bucket=bucket_name, Key=source_key)
+            print(f"Deleted {source_key}")
+    else:
+        print(f"No files found in folder: {source_prefix}")
+
+print("File transfer complete.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 himport boto3
 import pandas as pd
 import os
