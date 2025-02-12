@@ -1,28 +1,48 @@
 import boto3
+import pandas as pd
 
-def list_folders(bucket_name, prefix=''):
-    """
-    List all folders in a specified S3 bucket location.
+# Initialize the S3 client
+s3 = boto3.client('s3')
 
-    :param bucket_name: Name of the S3 bucket
-    :param prefix: S3 prefix if you're targeting a specific folder (default is root)
-    :return: List of folder names
-    """
-    s3 = boto3.client('s3')
-    
-    paginator = s3.get_paginator('list_objects_v2')
-    folders = set()
-    
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix, Delimiter='/'):
-        if 'CommonPrefixes' in page:
-            for obj in page['CommonPrefixes']:
-                folders.add(obj['Prefix'])
-    
-    return list(folders)
+# Example DataFrame (replace with your actual DataFrame)
+data = {
+    'parentcode': ['folder1', 'folder2', 'folder3'],
+}
+df = pd.DataFrame(data)
 
-# Example usage
+# Example dictionary (replace with your actual dictionary)
+my_dict = {
+    'folder1': 'newfolder1',
+    'folder2': 'newfolder2',
+    'folder3': 'newfolder3',
+}
+
+# Base S3 bucket and path
 bucket_name = 'your-bucket-name'
-prefix = 'your/folder/path/'  # Leave empty ('') to list from the root
-folders = list_folders(bucket_name, prefix)
 
-print("Folders found:", folders)
+# Loop through each row in the DataFrame
+for index, row in df.iterrows():
+    parent_folder = row['parentcode']
+    
+    # Create the new S3 path based on the logic
+    new_s3_path = f"s3://{bucket_name}/{my_dict.get(parent_folder, parent_folder)}"
+    
+    # List all objects in the source folder (parentcode folder)
+    source_folder_path = f'{parent_folder}/'  # S3 path to source folder (with trailing '/')
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=source_folder_path)
+
+    # If the folder contains objects
+    if 'Contents' in response:
+        for obj in response['Contents']:
+            source_key = obj['Key']
+            
+            # Define the new key (path in the new destination folder)
+            new_key = f"{my_dict.get(parent_folder, parent_folder)}/{source_key[len(source_folder_path):]}"
+            
+            # Copy the file to the new S3 path
+            copy_source = {'Bucket': bucket_name, 'Key': source_key}
+            s3.copy_object(CopySource=copy_source, Bucket=bucket_name, Key=new_key)
+            
+            print(f"Copied: {source_key} to {new_key}")
+    else:
+        print(f"No files found in {parent_folder}.")
