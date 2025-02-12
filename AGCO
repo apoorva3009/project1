@@ -1,4 +1,4 @@
-import boto3
+himport boto3
 import pandas as pd
 import os
 import concurrent.futures
@@ -131,3 +131,45 @@ for folder, (metadata_file, destination_folders) in metadata_files.items():
 
         for future in concurrent.futures.as_completed(future_tasks):
             future.result()
+
+
+import boto3
+import pandas as pd
+
+# Initialize S3 client
+s3 = boto3.client('s3')
+
+def copy_files_based_on_csv(csv_file_path, source_bucket, source_prefix, target_bucket, target_prefix):
+    # Read the CSV to get folder mappings
+    folder_mapping = pd.read_csv(csv_file_path)
+
+    for index, row in folder_mapping.iterrows():
+        source_folder = row['source_folder']
+        target_folder = row['target_folder']
+
+        # List files in the source folder
+        response = s3.list_objects_v2(Bucket=source_bucket, Prefix=f"{source_prefix}{source_folder}")
+
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                source_key = obj['Key']
+
+                # Construct the new target key
+                file_name = source_key.split('/')[-1]
+                target_key = f"{target_prefix}{target_folder}{file_name}"
+
+                # Copy the file
+                copy_source = {'Bucket': source_bucket, 'Key': source_key}
+                s3.copy(copy_source, target_bucket, target_key)
+                print(f"Copied {source_key} to {target_key}")
+        else:
+            print(f"No files found in {source_folder}")
+
+# Example usage
+csv_file_path = 'folders.csv'  # Local path to your CSV file
+source_bucket = 'source-bucket'
+source_prefix = 'source-folder/'
+target_bucket = 'target-bucket'
+target_prefix = 'target-folder/'
+
+copy_files_based_on_csv(csv_file_path, source_bucket, source_prefix, target_bucket, target_prefix)
